@@ -5,7 +5,9 @@ attack_per_width: 26
 attack_base: 80
 defense_per_width: 31
 defense_base: 80
-effective_coordination: 0.40
+effective_coordination: 0.45
 
 overwidth_penalty_rate: 1.5
 overwidth_penalty_max: 0.33
+stacking_limit_per_width: 0.1  # 80 combat width allows 8 divisions, 120 allows 12 divisions...
+stacking_penalty_per_division: 0.02

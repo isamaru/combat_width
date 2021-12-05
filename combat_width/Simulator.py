@@ -21,6 +21,8 @@ class Params:
         self.effective_coordination = value('effective_coordination')
         self.overwidth_penalty_rate = value('overwidth_penalty_rate')
         self.overwidth_penalty_max = value('overwidth_penalty_max')
+        self.stacking_limit_per_width = value('stacking_limit_per_width')
+        self.stacking_penalty_per_division = value('stacking_penalty_per_division')
 
         self.attackers_count = Params.units_per_front(
             self.combat_width, self.attacker_width, self.overwidth_penalty_rate, self.overwidth_penalty_max)
@@ -32,8 +34,17 @@ class Params:
         self.defense_overwidth_factor = Params.overwidth_penalty(
             self.combat_width, self.defender_width, self.defenders_count, self.overwidth_penalty_rate)
 
-        self.attack = (self.attack_base + (self.attacker_width * self.attack_per_width)) * self.attack_overwidth_factor
-        self.defense = (self.defense_base + (self.defender_width * self.defense_per_width)) * self.defense_overwidth_factor
+        self.attack_overstack_factor = Params.overstack_penalty(
+            self.combat_width, self.attackers_count, self.stacking_limit_per_width, self.stacking_penalty_per_division)
+        self.defense_overstack_factor = Params.overstack_penalty(
+            self.combat_width, self.defenders_count, self.stacking_limit_per_width, self.stacking_penalty_per_division)
+
+        self.attack = (
+                (self.attack_base + (self.attacker_width * self.attack_per_width))
+                * self.attack_overwidth_factor * self.attack_overstack_factor)
+        self.defense = (
+                (self.defense_base + (self.defender_width * self.defense_per_width))
+                * self.defense_overwidth_factor * self.defense_overstack_factor)
 
         self.target_pool_size = min(max(1, (2 * self.attacker_width) // self.defender_width), self.defenders_count)
 
@@ -51,6 +62,11 @@ class Params:
         return 1 - (overflow * penalty_rate)
 
     @staticmethod
+    def overstack_penalty(combat_width, unit_count, limit_per_width, penalty_per_division):
+        overflow = max(unit_count - math.floor(combat_width * limit_per_width), 0)
+        return 1 - (overflow * penalty_per_division)
+
+    @staticmethod
     def load_base(**kwargs):
         with open(r'./base_params.yaml') as file:
             return Params(yaml.load(file, Loader=yaml.FullLoader), **kwargs)
@@ -61,12 +77,18 @@ class Simulation:
         super().__init__()
         self.counter = 0
 
-    def simulate(self, params, rounds):
-        self.counter += 1
-        return sum((sum(self.simulate_round(params)) for _ in range(rounds))) / rounds
+    def simulate(self, params, rounds, value_function=None):
+        return self.process_rounds(self.simulate_round, params, rounds, value_function)
 
     def damage_received(self, attacks_received, params):
         return [(attacks + (max(0, attacks - params.defense) * 3)) / 10 for attacks in attacks_received]
+
+    def process_rounds(self, simulate_round_function, params, rounds, value_function=None):
+        self.counter += 1
+        mean_result = sum((sum(simulate_round_function(params)) for _ in range(rounds))) / rounds
+        if value_function is not None:
+            return value_function(mean_result, params)
+        return mean_result
 
     def simulate_round(self, params: Params):
         attacks_received = [0] * params.defenders_count
@@ -83,11 +105,10 @@ class Simulation:
 
         return self.damage_received(attacks_received, params)
 
-    def simulate_old(self, params, rounds):
-        self.counter += 1
-        return sum((sum(self.simulate_round_old(params)) for _ in range(rounds))) / rounds
+    def simulate_old(self, params, rounds, value_function=None):
+        return self.process_rounds(self.simulate_round_old, params, rounds, value_function)
 
-    def simulate_round_old(self, params: Params):
+    def simulate_round_old(self, params: Params, value_function=None):
         attacks_received = [0] * params.defenders_count
 
         for attacker in range(params.attackers_count):
@@ -102,6 +123,7 @@ def run_simulations(
         x_range, x_property,
         series_range, series_property,
         old_series_range=None, old_series_property=None,
+        value_function=None,
         **kwargs):
     s = Simulation()
 
@@ -111,7 +133,7 @@ def run_simulations(
             [
                 s.simulate(
                     Params.load_base(**{ax_property: ax_value, x_property: x_value, series_property: series_value}),
-                    rounds)
+                    rounds, value_function)
                 for series_value in series_range
             ] for x_value in x_range
         ]
@@ -127,7 +149,7 @@ def run_simulations(
                         old_series_property: old_series_value,
                         'overwidth_penalty_rate': 2.0
                     }),
-                    rounds)
+                    rounds, value_function)
                 for old_series_value in old_series_range
             ] for x_value in x_range
         ]
@@ -142,14 +164,14 @@ def display_results(data,
         title,
         ax_range, ax_property,
         x_range, x_property,
-        series_labels, **kwargs):
+        series_labels, y_label='damage dice dealt', **kwargs):
 
     fig, axs = plt.subplots(len(ax_range))  # Create a figure containing a single axes.
     for i, ax in enumerate(axs):
         ax.set_title(str(ax_range[i]) + ' ' + ax_property)
         ax.set_xticks(x_range)
         ax.set_xlabel(x_property)
-        ax.set_ylabel('damage dice dealt')
+        ax.set_ylabel(y_label)
         ax.plot(x_range, data[i], label=series_labels)
 
         ax.yaxis.set_major_locator(MultipleLocator(50))
@@ -182,7 +204,7 @@ def attacker_scenario():
     return {
         'title': "Average total damage dice dealt by attackers (80 + 26 attack per width) to 20w defenders (700 defense) on a filled frontage across 10000 runs",
         'file_prefix': 'attackers',
-        'rounds': 100,
+        'rounds': 10000,
         'ax_range': (80, 120, 160),
         'ax_property': 'combat_width',
         'x_range': list(range(10, 50)),
@@ -193,6 +215,7 @@ def attacker_scenario():
         'old_series_property': '',
         'series_labels': ["Coordination = %d (%d%%)" % ((x-0.35)*100, x*100) for x in series_range] + ['20w pre-NSB rules']
     }
+
 
 def coordination_scenario():
     series_range = (20, 25, 29, 30, 35, 39, 40, 45)
@@ -208,12 +231,42 @@ def coordination_scenario():
         'series_property': 'attacker_width',
         'old_series_range': None,
         'old_series_property': '',
-        'series_labels': ["Coordination = %d (%d%%)" % ((x-0.35)*100, x*100) for x in series_range] + ['20w pre-NSB rules']
+        'series_labels': ["Attacker width = %d" % x for x in series_range]
     }
 
 
+def defenders_scenario():
+    series_range = (16, 20, 27, 30, 40)
+    old_series_range = (20, 40)
+    return {
+        'title': "Average total damage dice received by defenders (80 + 31 defense per width) by attackers (80 + 26 attack per width, 0.45 effective coordination) on a filled frontage across 10000 runs",
+        'file_prefix': 'defenders',
+        'rounds': 10000,
+        'ax_range': (80, 120, 160),
+        'ax_property': 'combat_width',
+        'x_range': list(range(2, 50)),
+        'x_property': 'defender_width',
+        'series_range': series_range,
+        'series_property': 'attacker_width',
+        'old_series_range': old_series_range,
+        'old_series_property': 'attacker_width',
+        'series_labels': ["Attacker width = %d" % x for x in series_range] + ["Pre-NSB attacker width = %d" % x for x in old_series_range]
+    }
+
+def defenders_org_scenario():
+    def value_function(x, params: Params):
+        org = round(80 - (140/(2+(params.defender_width/2))))
+        return 100 * x / (params.defenders_count * org)
+    return dict(defenders_scenario(),
+                x_range=list(range(2, 50, 2)),
+                file_prefix='defenders_org',
+                title="Average normalized ORG damage received by defenders (80 + 31 defense per width) by attackers (80 + 26 attack per width, 0.45 effective coordination) on a filled frontage across 10000 runs",
+                y_label='relative ORG damage received',
+                value_function=value_function)
+
+
 def main():
-    scenario = attacker_scenario()
+    scenario = defenders_org_scenario()
     data = run_simulations(**scenario)
     export_results(data, **scenario)
     display_results(data, **scenario)
