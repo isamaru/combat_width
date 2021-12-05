@@ -1,0 +1,11 @@
+attacker_width: 20
+defender_width: 20
+combat_width: 120
+attack_per_width: 26
+attack_base: 80
+defense_per_width: 31
+defense_base: 80
+effective_coordination: 0.40
+
+overwidth_penalty_rate: 1.5
+overwidth_penalty_max: 0.33
