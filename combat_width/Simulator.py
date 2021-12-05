@@ -61,6 +61,7 @@ class Params:
         overflow = max(((unit_width * unit_count / combat_width) - 1), 0)
         return 1 - (overflow * penalty_rate)
 
+    # Bugged for NSB's combat widths
     @staticmethod
     def overstack_penalty(combat_width, unit_count, limit_per_width, penalty_per_division):
         overflow = max(unit_count - math.floor(combat_width * limit_per_width), 0)
@@ -170,7 +171,7 @@ def display_results(data,
     for i, ax in enumerate(axs):
         ax.set_title(str(ax_range[i]) + ' ' + ax_property)
         ax.set_xticks(x_range)
-        ax.set_xlabel(x_property)
+        # ax.set_xlabel(x_property)
         ax.set_ylabel(y_label)
         ax.plot(x_range, data[i], label=series_labels)
 
@@ -265,8 +266,54 @@ def defenders_org_scenario():
                 value_function=value_function)
 
 
+def terrain_scenario():
+    series_range = (
+        80, 84, 90, 78, 96, 75
+    )
+    series_labels = [
+        'hills (80)', 'forest/jungle (84)', 'plains/desert (90)', 'marsh (78)', 'urban (96)', 'mountain (75)'
+    ]
+    return {
+        'title': "Average total damage dice dealt by attackers (80 + 26 attack per width, 0.45 eff. coordination) to defenders (80 + 31 defense per width) across 10000 runs",
+        'file_prefix': 'terrains',
+        'rounds': 10000,
+        'ax_range': (10, 16, 21, 25, 30),
+        'ax_property': 'defender_width',
+        'x_range': list(range(12, 50)),
+        'x_property': 'attacker_width',
+        'series_range': series_range,
+        'series_property': 'combat_width',
+        'old_series_range': None,
+        'old_series_property': '',
+        'series_labels': series_labels
+    }
+
+def terrain_plus_scenario():
+    series_range = (
+        120, 126, 135, 104, 128, 100,
+        160, 168, 180, 130, 125
+    )
+    series_labels = [
+        'hills + 1 (120)', 'forest/jungle + 1 (126)', 'plains/desert + 1 (135)', 'marsh + 1 (104)', 'urban + 1 (128)', 'mountain + 1 (100)',
+        'hills/urban + 2 (160)', 'forest/jungle + 2 (168)', 'plains/desert + 2 (180)', 'marsh + 2 (130)', 'mountain + 2 (125)'
+    ]
+    return {
+        'title': "Average total damage dice dealt by attackers (80 + 26 attack per width, 0.45 eff. coordination) to defenders (80 + 31 defense per width) across 10000 runs",
+        'file_prefix': 'terrains_plus',
+        'rounds': 10000,
+        'ax_range': (12, 16, 21, 25, 30),
+        'ax_property': 'defender_width',
+        'x_range': list(range(12, 50)),
+        'x_property': 'attacker_width',
+        'series_range': series_range,
+        'series_property': 'combat_width',
+        'old_series_range': None,
+        'old_series_property': '',
+        'series_labels': series_labels
+    }
+
 def main():
-    scenario = defenders_org_scenario()
+    scenario = terrain_plus_scenario()
     data = run_simulations(**scenario)
     export_results(data, **scenario)
     display_results(data, **scenario)
